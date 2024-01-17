@@ -16,23 +16,39 @@ const addEmployee = async (req, res) => {
 
 const getAllEmployee = async (req, res) => {
   try {
-    const employees = await Employee.find().populate('department').exec();
-
-    const employeesWithProjects = await Promise.all(
-      employees.map(async (employee) => {
-        const projects = await ProjectEmployee.find({ employee: employee._id })
-          .populate('project')
-          .exec();
-
-        return {
-          _id: employee._id,
-          name: employee.name,
-          position: employee.position,
-          department: employee.department,
-          projects: projects,
-        };
-      })
-    );
+    const employeesWithProjects = await Employee.aggregate([
+      {
+        $lookup: {
+          from: 'departments',
+          localField: 'department',
+          foreignField: '_id',
+          as: 'department',
+        },
+      },
+      {
+        $unwind: '$department',
+      },
+      {
+        $lookup: {
+          from: 'projectemployees',
+          localField: '_id',
+          foreignField: 'employee',
+          as: 'projects',
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          position: 1,
+          department: {
+            _id: '$department._id',
+            name: '$department.name',
+          },
+          projects: 1,
+        },
+      },
+    ]);
 
     res.json({ employees: employeesWithProjects });
   } catch (error) {
@@ -60,6 +76,28 @@ const employeesInDepartment = async (req, res) => {
   }
 };
 
+// const employeesOnProject = async (req, res) => {
+//   try {
+//     const projectId = req.params.projectId;
+
+//     // Validate projectId
+//     if (!isValidObjectId(projectId)) {
+//       return res.status(400).json({ error: 'Invalid projectId' });
+//     }
+
+//     const employeesOnProject = await ProjectEmployee.find({
+//       project: projectId,
+//     })
+//       .populate('employee')
+//       .exec();
+
+//     res.json({ employees: employeesOnProject });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ error: 'Internal Server Error' });
+//   }
+// };
+
 const employeesOnProject = async (req, res) => {
   try {
     const projectId = req.params.projectId;
@@ -69,11 +107,24 @@ const employeesOnProject = async (req, res) => {
       return res.status(400).json({ error: 'Invalid projectId' });
     }
 
-    const employeesOnProject = await ProjectEmployee.find({
-      project: projectId,
-    })
-      .populate('employee')
-      .exec();
+    const employeesOnProject = await ProjectEmployee.aggregate([
+      {
+        $match: {
+          project: new mongoose.Types.ObjectId(projectId),
+        },
+      },
+      {
+        $lookup: {
+          from: 'employees',
+          localField: 'employee',
+          foreignField: '_id',
+          as: 'employeeDetails',
+        },
+      },
+      {
+        $unwind: '$employeeDetails',
+      },
+    ]);
 
     res.json({ employees: employeesOnProject });
   } catch (error) {
@@ -82,16 +133,47 @@ const employeesOnProject = async (req, res) => {
   }
 };
 
+// const employeesInPeriod = async (req, res) => {
+//   try {
+//     const { startDate, endDate } = req.query;
+
+//     const employeesInPeriod = await ProjectEmployee.find({
+//       startDate: { $gte: new Date(startDate) },
+//       endDate: { $lte: new Date(endDate) },
+//     })
+//       .populate('employee')
+//       .exec();
+
+//     res.json({ employees: employeesInPeriod });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ error: 'Internal Server Error' });
+//   }
+// };
+
 const employeesInPeriod = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    const employeesInPeriod = await ProjectEmployee.find({
-      startDate: { $gte: new Date(startDate) },
-      endDate: { $lte: new Date(endDate) },
-    })
-      .populate('employee')
-      .exec();
+    const employeesInPeriod = await ProjectEmployee.aggregate([
+      {
+        $match: {
+          startDate: { $gte: new Date(startDate) },
+          endDate: { $lte: new Date(endDate) },
+        },
+      },
+      {
+        $lookup: {
+          from: 'employees',
+          localField: 'employee',
+          foreignField: '_id',
+          as: 'employeeDetails',
+        },
+      },
+      {
+        $unwind: '$employeeDetails',
+      },
+    ]);
 
     res.json({ employees: employeesInPeriod });
   } catch (error) {
@@ -100,20 +182,64 @@ const employeesInPeriod = async (req, res) => {
   }
 };
 
+// const overallEmployeesOnProject = async (req, res) => {
+//   try {
+//     const projectId = req.params.projectId;
+
+//     // Validate projectId
+//     if (!isValidObjectId(projectId)) {
+//       return res.status(400).json({ error: 'Invalid projectId' });
+//     }
+
+//     const overallEmployeesOnProject = await ProjectEmployee.find({
+//       project: projectId,
+//     })
+//       .populate('employee')
+//       .exec();
+
+//     res.json({ employees: overallEmployeesOnProject });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ error: 'Internal Server Error' });
+//   }
+// };
+
 const overallEmployeesOnProject = async (req, res) => {
   try {
     const projectId = req.params.projectId;
 
     // Validate projectId
-    if (!isValidObjectId(projectId)) {
+    if (!mongoose.isValidObjectId(projectId)) {
       return res.status(400).json({ error: 'Invalid projectId' });
     }
 
-    const overallEmployeesOnProject = await ProjectEmployee.find({
-      project: projectId,
-    })
-      .populate('employee')
-      .exec();
+    const overallEmployeesOnProject = await ProjectEmployee.aggregate([
+      {
+        $match: { project: new mongoose.Types.ObjectId(projectId) },
+      },
+      {
+        $lookup: {
+          from: 'employees',
+          localField: 'employee',
+          foreignField: '_id',
+          as: 'employee',
+        },
+      },
+      {
+        $unwind: '$employee',
+      },
+      {
+        $project: {
+          _id: 0,
+          employee: {
+            _id: '$employee._id',
+            name: '$employee.name',
+            position: '$employee.position',
+            // Add other fields as needed
+          },
+        },
+      },
+    ]);
 
     res.json({ employees: overallEmployeesOnProject });
   } catch (error) {
